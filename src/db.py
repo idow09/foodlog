@@ -1,6 +1,10 @@
+import json
 import sqlite3
 from typing import Optional, List, Dict, Any
 import logging
+from agents import RunContextWrapper, function_tool
+
+from run_context import UserMessageCtx
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +41,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            role TEXT,
-            content TEXT,
-            image_path TEXT,
+            message_json TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (telegram_id)
         )
@@ -67,16 +69,17 @@ def get_or_create_user(telegram_id: int, username: Optional[str] = None) -> int:
     conn.close()
     return telegram_id
 
-def add_food_entry(user_id: int, description: str, calories: int, image_path: Optional[str] = None) -> int:
+@function_tool
+def add_food_entry(wrapper: RunContextWrapper[UserMessageCtx], description: str, calories: int) -> int:
     """Add a new food entry and return its ID."""
-    logger.info(f"Adding food entry for user {user_id}: {description} ({calories} calories)")
+    logger.info(f"Adding food entry for user {wrapper.context.user_id}: {description} ({calories} calories)")
     conn = sqlite3.connect('data/foodlog.db')
     c = conn.cursor()
     
     c.execute('''
         INSERT INTO food_entries (user_id, description, calories, image_path)
         VALUES (?, ?, ?, ?)
-    ''', (user_id, description, calories, image_path))
+    ''', (wrapper.context.user_id, description, calories, wrapper.context.image_path))
     
     entry_id = c.lastrowid
     conn.commit()
@@ -84,8 +87,8 @@ def add_food_entry(user_id: int, description: str, calories: int, image_path: Op
     logger.info(f"Food entry added with ID {entry_id}")
     return entry_id
 
-def update_food_entry(entry_id: int, description: Optional[str] = None, 
-                     calories: Optional[int] = None) -> bool:
+@function_tool
+def update_food_entry(entry_id: int, description: Optional[str] = None, calories: Optional[int] = None) -> bool:
     """Update an existing food entry."""
     logger.info(f"Updating food entry {entry_id}")
     conn = sqlite3.connect('data/foodlog.db')
@@ -118,6 +121,7 @@ def update_food_entry(entry_id: int, description: Optional[str] = None,
     logger.info(f"Food entry {entry_id} update {'successful' if success else 'failed'}")
     return success
 
+@function_tool
 def delete_food_entry(entry_id: int) -> bool:
     """Delete a food entry."""
     logger.info(f"Deleting food entry {entry_id}")
@@ -131,6 +135,7 @@ def delete_food_entry(entry_id: int) -> bool:
     logger.info(f"Food entry {entry_id} deletion {'successful' if success else 'failed'}")
     return success
 
+@function_tool
 def get_user_entries(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
     """Get recent food entries for a user."""
     logger.info(f"Getting recent entries for user {user_id}")
@@ -159,16 +164,16 @@ def get_user_entries(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
     logger.info(f"Retrieved {len(entries)} entries for user {user_id}")
     return entries
 
-def add_message(user_id: int, role: str, content: str, image_path: Optional[str] = None) -> int:
+def add_message(user_id: int, message_dict: dict) -> int:
     """Add a message to the conversation history."""
-    logger.info(f"Adding {role} message for user {user_id}")
+    logger.info(f"Adding message for user {user_id}")
     conn = sqlite3.connect('data/foodlog.db')
     c = conn.cursor()
     
     c.execute('''
-        INSERT INTO messages (user_id, role, content, image_path)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, role, content, image_path))
+        INSERT INTO messages (user_id, message_json)
+        VALUES (?, ?)
+    ''', (user_id, json.dumps(message_dict)))
     
     message_id = c.lastrowid
     conn.commit()
@@ -183,7 +188,7 @@ def get_conversation_history(user_id: int, limit: int = 10) -> List[Dict[str, An
     c = conn.cursor()
     
     c.execute('''
-        SELECT role, content, image_path, created_at
+        SELECT message_json, created_at
         FROM messages
         WHERE user_id = ?
         ORDER BY created_at DESC
@@ -192,12 +197,7 @@ def get_conversation_history(user_id: int, limit: int = 10) -> List[Dict[str, An
     
     messages = []
     for row in c.fetchall():
-        messages.append({
-            'role': row[0],
-            'content': row[1],
-            'image_path': row[2],
-            'created_at': row[3]
-        })
+        messages.append(json.loads(row[0]))
     
     conn.close()
     logger.info(f"Retrieved {len(messages)} messages for user {user_id}")

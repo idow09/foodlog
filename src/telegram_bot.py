@@ -51,7 +51,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     try:
         # Process the message
-        response = process_message(user_id, text, image_path)
+        response = await process_message(user_id, text, image_path)
         await update.message.reply_text(response)
         logger.info(f"Response sent to user {user_id}")
     except Exception as e:
@@ -84,4 +84,4 @@ def main() -> None:
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main() 
+    main()
