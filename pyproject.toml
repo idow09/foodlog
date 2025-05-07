@@ -1,15 +1,20 @@
 [project]
 name = "foodlog"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Telegram bot that helps users track their food intake and calorie consumption by analyzing text descriptions and food images."
+authors = [
+    {name = "Ido Weiss",email = "idow@ai21.com"}
+]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
-    "openai-agents>=0.0.14",
-    "openai>=1.76.0",
-    "pandas>=2.2.3",
+    "openai-agents (>=0.0.14)",
     "pillow>=11.2.1",
     "python-dotenv>=1.1.0",
     "python-telegram-bot>=22.0",
-    "telethon>=1.40.0",
 ]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
