@@ -10,3 +10,5 @@
    - [ ] "/feedback <message>" (for sending feedback to the developer)
    - [ ] "/history" (for getting the user's raw food log)
    - [ ] "/stats" (for getting avg/total calories, etc.)
+   - [ ] "/dev password" (marking the user as a developer, enabling extra features and control)
+   - [ ] add messages to the DB only in the end of the turn, not after each message (in case of a crash, the messages will be lost- that's good)

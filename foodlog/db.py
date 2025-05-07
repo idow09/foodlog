@@ -2,9 +2,7 @@ import json
 import sqlite3
 from typing import Optional, List, Dict, Any
 import logging
-from agents import RunContextWrapper, function_tool
 
-from run_context import UserMessageCtx
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +72,12 @@ def get_or_create_user(telegram_id: int, username: Optional[str] = None) -> int:
     return telegram_id
 
 
-@function_tool
 def add_food_entry(
-    wrapper: RunContextWrapper[UserMessageCtx], description: str, calories: int
+    user_id: int, description: str, calories: int, image_path: Optional[str] = None
 ) -> int:
     """Add a new food entry and return its ID."""
     logger.info(
-        f"Adding food entry for user {wrapper.context.user_id}: {description} ({calories} calories)"
+        f"Adding food entry for user {user_id}: {description} ({calories} calories)"
     )
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
@@ -90,7 +87,7 @@ def add_food_entry(
         INSERT INTO food_entries (user_id, description, calories, image_path)
         VALUES (?, ?, ?, ?)
     """,
-        (wrapper.context.user_id, description, calories, wrapper.context.image_path),
+        (user_id, description, calories, image_path),
     )
 
     entry_id = c.lastrowid
@@ -99,8 +96,31 @@ def add_food_entry(
     logger.info(f"Food entry added with ID {entry_id}")
     return entry_id
 
+ADD_FOOD_ENTRY_TOOL = {
+    "name": "add_food_entry",
+    "type": "function",
+    "description": "Add a new food entry to the database.",
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "required": [
+            "description",
+            "calories",
+        ],
+        "properties": {
+            "description": {
+                "type": "string",
+                "description": "A description of the food item"
+            },
+            "calories": {
+                "type": "number",
+                "description": "The (estimated) number of calories in the food item"
+            },
+        },
+        "additionalProperties": False
+    }
+}
 
-@function_tool
 def update_food_entry(
     entry_id: int, description: Optional[str] = None, calories: Optional[int] = None
 ) -> bool:
@@ -137,7 +157,6 @@ def update_food_entry(
     return success
 
 
-@function_tool
 def delete_food_entry(entry_id: int) -> bool:
     """Delete a food entry."""
     logger.info(f"Deleting food entry {entry_id}")
@@ -154,7 +173,6 @@ def delete_food_entry(entry_id: int) -> bool:
     return success
 
 
-@function_tool
 def get_user_entries(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
     """Get recent food entries for a user."""
     logger.info(f"Getting recent entries for user {user_id}")

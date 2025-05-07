@@ -1,35 +1,22 @@
 import base64
 from datetime import datetime
+import json
 from typing import Optional
 import logging
-from run_context import UserMessageCtx
-from db import add_food_entry, get_or_create_user, add_message, get_conversation_history
-from prompts import SYSTEM_PROMPT
-from agents import Agent, RunContextWrapper, Runner
+from foodlog.db import ADD_FOOD_ENTRY_TOOL, add_food_entry, get_or_create_user, add_message, get_conversation_history
+from foodlog.prompts import SYSTEM_PROMPT
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
+client = AsyncOpenAI()
 
-def dynamic_instructions(
-    wrapper: RunContextWrapper[UserMessageCtx], agent: Agent[UserMessageCtx]
-):
+def system_prompt():
     return (
         SYSTEM_PROMPT
-        + f"\n<dev_info>user_id: {wrapper.context.user_id}; timestamp: {datetime.now()}</dev_info>"
+        + f"\n<dev_info>timestamp: {datetime.now()}</dev_info>"
     )
 
-
-agent = Agent[UserMessageCtx](
-    name="FoodLogger",
-    model="gpt-4o-mini",
-    instructions=dynamic_instructions,
-    tools=[
-        add_food_entry,
-        # update_food_entry,
-        # delete_food_entry,
-        # get_user_entries
-    ],
-)
 
 
 def image_to_base64(image_path):
@@ -41,10 +28,6 @@ def image_to_base64(image_path):
 async def process_message(
     user_id: int, text: Optional[str] = None, image_path: Optional[str] = None
 ) -> str:
-    orig_user_message_ctx = UserMessageCtx(
-        user_id=user_id, timestamp=datetime.now(), image_path=image_path
-    )
-
     logger.info(f"Processing message for user {user_id}")
 
     get_or_create_user(user_id)
@@ -74,11 +57,31 @@ async def process_message(
 
     logger.info("Getting response from agent")
 
-    result = await Runner.run(
-        starting_agent=agent, input=messages, context=orig_user_message_ctx
+    response = await client.responses.create(
+        model="gpt-4o-mini",
+        instructions=system_prompt(),
+        input=messages,
+        tools=[
+            ADD_FOOD_ENTRY_TOOL,
+        ],
+        tool_choice="auto",
     )
-    for item in result.new_items:
-        add_message(user_id, item.to_input_item())
+    assistant_message = ""
+    for out in response.output:
+        if out.type == "function_call":
+            tool_call = out
+            args = json.loads(tool_call.arguments)
+            description, calories = args["description"], args["calories"]
+            add_food_entry(user_id, description, calories, image_path)
+            assistant_message += f"New record: {description} ({calories} calories)\n"
 
-    logger.info("Message processing completed")
-    return result.final_output
+    if assistant_message:
+        add_message(user_id, {"role": "assistant", "content": assistant_message})
+        logger.info(f"Assistant message: {assistant_message}")
+        logger.info("Message processing completed with new record(s)")
+        return assistant_message
+
+    add_message(user_id, {"role": "assistant", "content": response.output_text})
+    logger.info(f"Assistant message: {response.output_text}")
+    logger.info("Message processing completed with no new record")
+    return response.output_text

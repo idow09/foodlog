@@ -8,9 +8,9 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-from preset_messages import WELCOME_MESSAGE
-from bot import process_message
-from db import init_db
+from foodlog.preset_messages import WELCOME_MESSAGE
+from foodlog.bot import process_message
+from foodlog.db import init_db
 from dotenv import load_dotenv
 
 
