@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 import os
 import logging
 from telegram import Update
@@ -11,10 +16,6 @@ from telegram.ext import (
 from foodlog.preset_messages import WELCOME_MESSAGE
 from foodlog.bot import process_message
 from foodlog.db import init_db
-from dotenv import load_dotenv
-
-
-load_dotenv()
 
 # Create necessary directories
 os.makedirs("data/photos", exist_ok=True)
