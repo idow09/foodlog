@@ -14,6 +14,20 @@ dependencies = [
     "python-telegram-bot>=22.0",
 ]
 
+[tool.poetry]
+name = "foodlog"
+version = "0.1.0"
+description = "A Telegram bot that helps users track their food intake and calorie consumption by analyzing text descriptions and food images."
+authors = ["Ido Weiss <idow@ai21.com>"]
+readme = "README.md"
+packages = [{include = "foodlog"}]
+
+[tool.poetry.dependencies]
+python = ">=3.11"
+openai-agents = ">=0.0.14"
+pillow = ">=11.2.1"
+python-dotenv = ">=1.1.0"
+python-telegram-bot = ">=22.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
