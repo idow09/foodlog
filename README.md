@@ -1,7 +1,12 @@
 # TODO
 - [ ] Deploy!
-- [ ] add tools to do free-form manipulation of the food log (including adding a record for yesterday)
+- [ ] add tools to do free-form manipulation of the food log (e.g. adding a record for yesterday)
 - [ ] fix the UTC+3 bug
 - [ ] use MCP
 - [ ] pre-commit hooks, launch.json
 - [ ] tests (unit-test for the sys-prompts, which is actually a mini-eval...?)
+- [ ] add special commands like
+   - [ ] "/report 30, salad" (for adding 30 calories of salad w/o AI interaction)
+   - [ ] "/feedback <message>" (for sending feedback to the developer)
+   - [ ] "/history" (for getting the user's raw food log)
+   - [ ] "/stats" (for getting avg/total calories, etc.)
