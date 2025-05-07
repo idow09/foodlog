@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime
 import json
+import os
 from typing import Optional
 import logging
 from foodlog.db import ADD_FOOD_ENTRY_TOOL, add_food_entry, get_or_create_user, add_message, get_conversation_history
@@ -9,7 +10,7 @@ from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI()
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def system_prompt():
     return (
