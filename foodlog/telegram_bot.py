@@ -1,24 +1,26 @@
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
-import os
 import logging
+import os
+
 from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
-    MessageHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
-from foodlog.preset_messages import WELCOME_MESSAGE
+
 from foodlog.bot import process_message
 from foodlog.db import init_db
+from foodlog.preset_messages import WELCOME_MESSAGE
 
 # Create necessary directories
 os.makedirs("data/photos", exist_ok=True)
+
 
 # Enable logging
 logging.basicConfig(
