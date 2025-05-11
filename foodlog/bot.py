@@ -85,7 +85,16 @@ async def process_message(
             tool_call = part
             args = json.loads(tool_call.arguments)
             description, calories = args["description"], args["calories"]
-            add_food_entry(user_id, description, calories, image_path)
+            entry_id = add_food_entry(user_id, description, calories, image_path)
+            add_message(user_id, tool_call.model_dump())
+            add_message(
+                user_id,
+                {
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": json.dumps({"entry_id": entry_id}),
+                },
+            )
             assistant_message += f"New record: {description} ({calories} calories)\n"
 
     if assistant_message:
