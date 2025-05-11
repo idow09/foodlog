@@ -1,8 +1,8 @@
 import json
-import sqlite3
-from typing import Optional, List, Dict, Any
 import logging
-
+import sqlite3
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,7 @@ def add_food_entry(
     logger.info(f"Food entry added with ID {entry_id}")
     return entry_id
 
+
 ADD_FOOD_ENTRY_TOOL = {
     "name": "add_food_entry",
     "type": "function",
@@ -110,16 +111,17 @@ ADD_FOOD_ENTRY_TOOL = {
         "properties": {
             "description": {
                 "type": "string",
-                "description": "A description of the food item"
+                "description": "A description of the food item",
             },
             "calories": {
                 "type": "number",
-                "description": "The (estimated) number of calories in the food item"
+                "description": "The (estimated) number of calories in the food item",
             },
         },
-        "additionalProperties": False
-    }
+        "additionalProperties": False,
+    },
 }
+
 
 def update_food_entry(
     entry_id: int, description: Optional[str] = None, calories: Optional[int] = None
@@ -173,22 +175,38 @@ def delete_food_entry(entry_id: int) -> bool:
     return success
 
 
-def get_user_entries(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+def get_user_entries(
+    user_id: int, limit: int | Literal["today"] = "today"
+) -> List[Dict[str, Any]]:
     """Get recent food entries for a user."""
     logger.info(f"Getting recent entries for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT id, description, calories, image_path, created_at
-        FROM food_entries
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-        LIMIT ?
-    """,
-        (user_id, limit),
-    )
+    if limit == "today":
+        # Get entries from today only
+        today = datetime.now().strftime("%Y-%m-%d")
+        c.execute(
+            """
+            SELECT id, description, calories, image_path, created_at
+            FROM food_entries
+            WHERE user_id = ? AND date(created_at) = ?
+            ORDER BY created_at DESC
+            """,
+            (user_id, today),
+        )
+    else:
+        # Get entries with a numeric limit
+        c.execute(
+            """
+            SELECT id, description, calories, image_path, created_at
+            FROM food_entries
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
 
     entries = []
     for row in c.fetchall():

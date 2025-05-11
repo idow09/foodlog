@@ -11,4 +11,7 @@
    - [ ] "/history" (for getting the user's raw food log)
    - [ ] "/stats" (for getting avg/total calories, etc.)
    - [ ] "/dev password" (marking the user as a developer, enabling extra features and control)
+   - [ ] "/sql <query>" (for executing raw SQL on the food log DB)
+   - [ ] "/mcp" (for defining available tools)
+   - [ ] "/set_goal <calories>" (for setting a daily goal which will then be added to the daily summary with nice asciiart progress bar)
    - [ ] add messages to the DB only in the end of the turn, not after each message (in case of a crash, the messages will be lost- that's good)
