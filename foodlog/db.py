@@ -1,8 +1,9 @@
-import json
 import logging
 import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
+
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -225,9 +226,9 @@ def get_user_entries(
     return entries
 
 
-def add_message(user_id: int, message_dict: dict) -> int:
-    """Add a message to the conversation history."""
-    logger.info(f"Adding message for user {user_id}")
+def add_message(user_id: int, messages_json_str: str) -> int:
+    """Add a list of Pydantic AI messages (as a JSON string) to the conversation history."""
+    logger.info(f"Adding Pydantic AI messages for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
@@ -236,37 +237,65 @@ def add_message(user_id: int, message_dict: dict) -> int:
         INSERT INTO messages (user_id, message_json)
         VALUES (?, ?)
     """,
-        (user_id, json.dumps(message_dict)),
+        (user_id, messages_json_str),
     )
 
     message_id = c.lastrowid
     conn.commit()
     conn.close()
-    logger.info(f"Message added with ID {message_id}")
+    logger.info(f"Pydantic AI messages stored with ID {message_id}")
     return message_id
 
 
-def get_conversation_history(user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-    """Get recent conversation history for a user."""
-    logger.info(f"Getting conversation history for user {user_id}")
+def get_conversation_history(user_id: int, limit: int = 10) -> List[ModelMessage]:
+    """Get recent conversation history for a user as a list of Pydantic AI ModelMessage objects."""
+    logger.info(f"Getting Pydantic AI conversation history for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
+    # Fetch the most recent 'limit' entries (each entry is a list of messages from an interaction)
     c.execute(
         """
-        SELECT message_json, created_at
+        SELECT message_json
         FROM messages
         WHERE user_id = ?
         ORDER BY created_at DESC
-        LIMIT ?
+        LIMIT ? 
     """,
         (user_id, limit),
     )
 
-    messages = []
-    for row in c.fetchall():
-        messages.append(json.loads(row[0]))
+    all_messages: List[ModelMessage] = []
+    # Rows are fetched in reverse chronological order (newest first)
+    # To maintain chronological order for the agent, we should process them and then reverse if needed,
+    # or build the list in reverse.
+    # Pydantic AI expects history oldest to newest. So we fetch DESC and then reverse the final list of lists before flattening.
 
+    rows = c.fetchall()
     conn.close()
-    logger.info(f"Retrieved {len(messages)} messages for user {user_id}")
-    return messages
+
+    # Rows are (message_json_str,)
+    # We want to construct the history in chronological order (oldest first for Pydantic AI)
+    # So, we iterate through fetched rows (newest first) and prepend to maintain order, or reverse later.
+
+    # Let's build it newest first, then reverse the list of lists of messages, then flatten.
+    # No, easier: fetch rows, then reverse the rows list, then process.
+
+    for row in reversed(rows):  # Process oldest first
+        message_json_str = row[0]
+        try:
+            # Each message_json_str is a list of ModelMessage objects
+            messages_from_row = ModelMessagesTypeAdapter.validate_json(message_json_str)
+            all_messages.extend(messages_from_row)
+        except Exception as e:
+            logger.error(
+                f"Failed to parse message_json for user {user_id}: {e} - JSON: {message_json_str}"
+            )
+            # Decide how to handle: skip this entry, raise, etc.
+            # For now, we'll skip corrupted entries.
+            continue
+
+    logger.info(
+        f"Retrieved {len(all_messages)} Pydantic AI messages for user {user_id}"
+    )
+    return all_messages

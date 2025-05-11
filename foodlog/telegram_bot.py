@@ -1,3 +1,4 @@
+import logfire
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,6 +22,8 @@ from foodlog.preset_messages import WELCOME_MESSAGE
 # Create necessary directories
 os.makedirs("data/photos", exist_ok=True)
 
+logfire.configure()
+logfire.instrument_sqlite3()
 
 # Enable logging
 logging.basicConfig(

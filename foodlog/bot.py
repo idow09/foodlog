@@ -1,14 +1,16 @@
 import base64
-import json
 import logging
-import os
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Annotated, List, Optional, Union
 
-from openai import AsyncOpenAI
+from annotated_types import MinLen
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, BinaryContent, RunContext
+from pydantic_ai.messages import ModelMessage
+from typing_extensions import TypeAlias
 
 from foodlog.db import (
-    ADD_FOOD_ENTRY_TOOL,
     add_food_entry,
     add_message,
     get_conversation_history,
@@ -19,11 +21,67 @@ from foodlog.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+class FoodEntry(BaseModel):
+    """Model for adding a new food entry."""
+
+    description: Annotated[str, MinLen(1)] = Field(
+        description="The description of the food entry."
+    )
+    calories: int = Field(description="The calories of the food entry in kcal.")
 
 
-def system_prompt():
+class FoodEntryList(BaseModel):
+    """Model for adding a list of food entries."""
+
+    entries: list[FoodEntry] = Field(
+        description="A list of food entries to add to the user's food log."
+    )
+
+
+class TextResponse(BaseModel):
+    """Model for a simple text response from the assistant."""
+
+    text: str
+
+
+Response: TypeAlias = Union[FoodEntryList, TextResponse]
+
+
+@dataclass
+class Deps:
+    user_id: int
+    image_path: Optional[str] = None
+
+
+agent: Agent[Deps, Response] = Agent(
+    model="openai:gpt-4o",
+    output_type=Response,
+    deps_type=Deps,
+    end_strategy="exhaustive",
+    instrument=True,
+)
+
+
+@agent.instructions
+async def dynamic_instructions(ctx: RunContext[Deps]) -> str:
     return SYSTEM_PROMPT + f"\n<dev_info>timestamp: {datetime.now()}</dev_info>"
+
+
+@agent.output_validator
+async def validate_and_process_output(
+    ctx: RunContext[Deps], output: Response
+) -> Response:
+    user_id = ctx.deps.user_id
+    if isinstance(output, FoodEntryList):
+        logger.info(f"Validator: Adding food entries for user {user_id}")
+        for entry in output.entries:
+            add_food_entry(
+                user_id, entry.description, entry.calories, ctx.deps.image_path
+            )
+        return output
+    elif isinstance(output, TextResponse):
+        return output
 
 
 def image_to_base64(image_path):
@@ -34,74 +92,55 @@ def image_to_base64(image_path):
 
 def daily_summary(user_id: int) -> str:
     entries = get_user_entries(user_id, limit="today")
+    if not entries:
+        return "No entries for today yet."
     total_calories = sum(entry["calories"] for entry in entries)
-    return f"Total calories for today: {total_calories}"
+    return f"Total calories for today: {total_calories} kcal."
 
 
 async def process_message(
     user_id: int, text: Optional[str] = None, image_path: Optional[str] = None
 ) -> str:
-    logger.info(f"Processing message for user {user_id}")
+    logger.info(
+        f"Processing message for user {user_id} with Pydantic-AI native history"
+    )
 
     get_or_create_user(user_id)
 
-    messages = get_conversation_history(user_id, limit=10)
-    messages.reverse()
+    retrieved_history: List[ModelMessage] = get_conversation_history(
+        user_id, limit=10
+    )  # `limit` here refers to DB entries, not total messages
 
-    if image_path:
-        b64_image = image_to_base64(image_path)
-        image_message = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_image",
-                    "detail": "auto",
-                    "image_url": f"data:image/jpeg;base64,{b64_image}",
-                }
-            ],
-        }
-
-        messages.append(image_message)
-        add_message(user_id, image_message)
+    agent_input_content: list[dict] = []
     if text:
-        text_message = {"role": "user", "content": text}
-        messages.append(text_message)
-        add_message(user_id, text_message)
+        agent_input_content.append(text)
+    if image_path:
+        with open(image_path, "rb") as image_file:
+            image_binary = image_file.read()
+        agent_input_content.append(
+            BinaryContent(data=image_binary, media_type="image/jpeg")
+        )
+    deps = Deps(user_id=user_id, image_path=image_path)
 
-    logger.info("Getting response from agent")
-
-    response = await client.responses.create(
-        model="gpt-4o-mini",
-        instructions=system_prompt(),
-        input=messages,
-        tools=[
-            ADD_FOOD_ENTRY_TOOL,
-        ],
-        tool_choice="auto",
+    logger.info(
+        f"Running Pydantic-AI agent for user {user_id} with {len(retrieved_history)} history messages."
     )
-    assistant_message = ""
-    for part in response.output:
-        if part.type == "function_call":
-            tool_call = part
-            args = json.loads(tool_call.arguments)
-            description, calories = args["description"], args["calories"]
-            entry_id = add_food_entry(user_id, description, calories, image_path)
-            add_message(user_id, tool_call.model_dump())
-            add_message(
-                user_id,
-                {
-                    "type": "function_call_output",
-                    "call_id": tool_call.call_id,
-                    "output": json.dumps({"entry_id": entry_id}),
-                },
+
+    result = await agent.run(
+        agent_input_content, message_history=retrieved_history, deps=deps
+    )
+
+    add_message(user_id, result.new_messages_json())
+
+    assistant_response_text = ""
+    if isinstance(result.output, FoodEntryList):
+        for fe in result.output.entries:
+            assistant_response_text += (
+                f"New record: {fe.description} ({fe.calories} calories).\n"
             )
-            assistant_message += f"New record: {description} ({calories} calories)\n"
+        assistant_response_text += daily_summary(user_id)
+    elif isinstance(result.output, TextResponse):
+        assistant_response_text = result.output.text
 
-    if assistant_message:
-        assistant_message += daily_summary(user_id)
-    else:
-        assistant_message = response.output_text
-
-    add_message(user_id, {"role": "assistant", "content": assistant_message})
-    logger.info(f"Assistant message: {assistant_message}")
-    return assistant_message
+    logger.info(f"Assistant message for user {user_id}: {assistant_response_text}")
+    return assistant_response_text
