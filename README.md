@@ -1,7 +1,10 @@
 # TODO
-- [ ] Deploy!
+- [ ] complete the transfer to Pydantic-AI
+- [ ] intercetp the agent (using its async iter) and after adding food entries finish the interaction with a predefined message
+- [ ] use logfire syntax to capture full spans
+- [x] Deploy!
 - [ ] add tools to do free-form manipulation of the food log (e.g. adding a record for yesterday)
-- [ ] fix the UTC+3 bug
+- [ ] fix the UTC+3 bug!! probably in the sqlite settings
 - [ ] use MCP
 - [ ] pre-commit hooks, launch.json
 - [ ] tests (unit-test for the sys-prompts, which is actually a mini-eval...?)
