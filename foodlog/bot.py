@@ -65,8 +65,23 @@ def daily_summary(user_id: int) -> str:
     entries = get_user_entries(user_id, limit="today")
     if not entries:
         return "No entries for today yet."
+
     total_calories = sum(entry["calories"] for entry in entries)
-    return f"Total calories for today: {total_calories} kcal."
+    goal_calories = 1800  # Magic constant for now
+    bar_length = 20  # Length of the progress bar
+
+    progress_ratio = min(total_calories / goal_calories, 1.0)  # Cap at 100% for the bar
+    filled_length = int(progress_ratio * bar_length)
+    empty_length = bar_length - filled_length
+
+    progress_bar = "█" * filled_length + "░" * empty_length
+    percentage = (total_calories / goal_calories) * 100
+
+    progress_display = (
+        f"[{progress_bar}] {percentage:.0f}%\n({total_calories}/{goal_calories} kcal)"
+    )
+
+    return progress_display
 
 
 async def handle_command(user_id: int, text: str) -> str:
