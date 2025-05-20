@@ -1,4 +1,3 @@
-import logfire
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -6,6 +5,7 @@ load_dotenv()
 import logging
 import os
 
+import logfire
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -24,6 +24,8 @@ os.makedirs("data/photos", exist_ok=True)
 
 logfire.configure()
 logfire.instrument_sqlite3()
+logfire.instrument_pydantic_ai()
+
 
 # Enable logging
 logging.basicConfig(
