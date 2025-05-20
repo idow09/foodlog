@@ -43,6 +43,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(WELCOME_MESSAGE)
 
 
+async def handle_message_wrapper(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    user = update.effective_user
+    user_id = user.id
+    with logfire.span(f"handle_message_user_id={user_id}"):
+        await handle_message(update, context)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle incoming messages."""
     user = update.effective_user
@@ -96,7 +105,9 @@ def main() -> None:
     # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(
-        MessageHandler(filters.PHOTO | filters.TEXT & ~filters.COMMAND, handle_message)
+        MessageHandler(
+            filters.PHOTO | filters.TEXT & ~filters.COMMAND, handle_message_wrapper
+        )
     )
     logger.info("Handlers added")
 
