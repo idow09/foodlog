@@ -99,12 +99,38 @@ def add_food_entry(
 
 
 def update_food_entry(
-    entry_id: int, description: Optional[str] = None, calories: Optional[int] = None
+    user_id: int,
+    entry_id: int,
+    description: Optional[str] = None,
+    calories: Optional[int] = None,
 ) -> bool:
-    """Update an existing food entry."""
-    logger.info(f"Updating food entry {entry_id}")
+    """Update an existing food entry.
+    Raises:
+        ValueError: If the entry does not belong to the user or does not exist.
+    """
+    logger.info(f"Updating food entry {entry_id} for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
+
+    # First, verify the entry belongs to the user
+    c.execute(
+        "SELECT user_id FROM food_entries WHERE id = ?",
+        (entry_id,),
+    )
+    row = c.fetchone()
+
+    if row is None:
+        conn.close()
+        logger.error(
+            f"Attempt to update non-existent food entry {entry_id} by user {user_id}"
+        )
+        raise ValueError(f"Food entry with ID {entry_id} not found.")
+    if row[0] != user_id:
+        conn.close()
+        logger.error(
+            f"User {user_id} attempted to update food entry {entry_id} belonging to user {row[0]}"
+        )
+        raise ValueError(f"Food entry {entry_id} does not belong to user {user_id}.")
 
     updates = []
     params = []
@@ -117,16 +143,23 @@ def update_food_entry(
 
     if not updates:
         conn.close()
+        logger.info(f"No updates provided for food entry {entry_id}. No action taken.")
         return False
 
     params.append(entry_id)
+    # The WHERE clause now also includes user_id for an additional layer of safety,
+    # though the check above should prevent unauthorized updates.
     query = f"""
         UPDATE food_entries 
         SET {", ".join(updates)}
-        WHERE id = ?
+        WHERE id = ? AND user_id = ? 
     """
+    params.append(user_id)  # Add user_id to the params for the WHERE clause
 
-    c.execute(query, params)
+    # Reorder params: SET values first, then id for WHERE, then user_id for WHERE
+    final_params = params[:-2] + [params[-2], params[-1]]
+
+    c.execute(query, final_params)
     success = c.rowcount > 0
     conn.commit()
     conn.close()
@@ -134,18 +167,39 @@ def update_food_entry(
     return success
 
 
-def delete_food_entry(entry_id: int) -> bool:
-    """Delete a food entry."""
-    logger.info(f"Deleting food entry {entry_id}")
+def delete_food_entry(user_id: int, entry_id: int) -> bool:
+    """Delete a food entry if it belongs to the user."""
+    logger.info(f"User {user_id} attempting to delete food entry {entry_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
-    c.execute("DELETE FROM food_entries WHERE id = ?", (entry_id,))
+    # First, verify the entry exists and belongs to the user
+    c.execute("SELECT user_id FROM food_entries WHERE id = ?", (entry_id,))
+    row = c.fetchone()
+
+    if row is None:
+        conn.close()
+        logger.error(
+            f"Attempt to delete non-existent food entry {entry_id} by user {user_id}"
+        )
+        raise ValueError(f"Food entry with ID {entry_id} not found.")
+
+    if row[0] != user_id:
+        conn.close()
+        logger.error(
+            f"User {user_id} attempted to delete food entry {entry_id} belonging to user {row[0]}"
+        )
+        raise ValueError(f"Food entry {entry_id} does not belong to user {user_id}.")
+
+    # Proceed with deletion, ensuring user_id matches in the DELETE statement as a safeguard
+    c.execute(
+        "DELETE FROM food_entries WHERE id = ? AND user_id = ?", (entry_id, user_id)
+    )
     success = c.rowcount > 0
     conn.commit()
     conn.close()
     logger.info(
-        f"Food entry {entry_id} deletion {'successful' if success else 'failed'}"
+        f"Food entry {entry_id} deletion for user {user_id} {'successful' if success else 'failed'}"
     )
     return success
 
@@ -166,7 +220,7 @@ def get_user_entries(
             SELECT id, description, calories, image_path, created_at
             FROM food_entries
             WHERE user_id = ? AND date(created_at, 'localtime') = ?
-            ORDER BY created_at DESC
+            ORDER BY created_at ASC
             """,
             (user_id, today),
         )

@@ -106,7 +106,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(
         MessageHandler(
-            filters.PHOTO | filters.TEXT & ~filters.COMMAND, handle_message_wrapper
+            filters.PHOTO | filters.TEXT | filters.COMMAND, handle_message_wrapper
         )
     )
     logger.info("Handlers added")

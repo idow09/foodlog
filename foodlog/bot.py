@@ -15,6 +15,12 @@ from foodlog.db import (
     get_or_create_user,
     get_user_entries,
 )
+from foodlog.db import (
+    delete_food_entry as db_delete_food_entry,
+)
+from foodlog.db import (
+    update_food_entry as db_update_food_entry,
+)
 from foodlog.prompts import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -45,6 +51,40 @@ async def add_food_entry(ctx: RunContext[Deps], description: str, calories: int)
         calories: The calories of the food entry in kcal.
     """
     db_add_food_entry(ctx.deps.user_id, description, calories, ctx.deps.image_path)
+
+
+@agent.tool
+async def update_food_entry(
+    ctx: RunContext[Deps], entry_id: int, description: str, calories: int
+):
+    """
+    Update a food entry in the user's food log.
+
+    Args:
+        entry_id: The ID of the food entry to update.
+        description: The description of the food entry.
+        calories: The calories of the food entry in kcal.
+    """
+    db_update_food_entry(ctx.deps.user_id, entry_id, description, calories)
+
+
+@agent.tool
+async def delete_food_entry(ctx: RunContext[Deps], entry_id: int):
+    """
+    Delete a food entry from the user's food log.
+
+    Args:
+        entry_id: The ID of the food entry to delete.
+    """
+    db_delete_food_entry(ctx.deps.user_id, entry_id)
+
+
+@agent.tool
+async def get_user_entries_today(ctx: RunContext[Deps]):
+    """
+    Get all food entries for the user today.
+    """
+    return get_user_entries(ctx.deps.user_id, limit="today")
 
 
 @agent.instructions
@@ -93,6 +133,25 @@ async def handle_command(user_id: int, text: str) -> str:
                 for entry in get_user_entries(user_id, limit="today")
             ]
         )
+    elif text.startswith("/add "):
+        parts = text[5:].split(" ", 1)  # Skip "/add "
+        calories = int(parts[0])
+        if len(parts) == 1:
+            description = ""
+        else:
+            description = parts[1]
+        db_add_food_entry(user_id, description, calories)
+        return f"Added {calories} kcal to your food log.\n{daily_summary(user_id)}"
+    elif text == "/help":
+        return "Here's a list of commands:\n" + "\n".join(
+            [
+                "/today - Show your food log history for today",
+                "/add <calories> <description> - Add a new food entry to your food log",
+                "/help - Show this help message",
+            ]
+        )
+    else:
+        return "Invalid command. Use /help to see available commands."
 
 
 async def process_message(
