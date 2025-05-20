@@ -10,7 +10,7 @@ from foodlog.db import (
     add_food_entry as db_add_food_entry,
 )
 from foodlog.db import (
-    add_message,
+    add_interaction,
     get_conversation_history,
     get_or_create_user,
     get_user_entries,
@@ -49,11 +49,7 @@ async def add_food_entry(ctx: RunContext[Deps], description: str, calories: int)
 
 @agent.instructions
 async def dynamic_instructions(ctx: RunContext[Deps]) -> str:
-    return (
-        SYSTEM_PROMPT
-        + "\nDon't call multiple tools"
-        + f"\n<dev_info>timestamp: {datetime.now()}</dev_info>"
-    )
+    return SYSTEM_PROMPT + f"\n<dev_info>timestamp: {datetime.now()}</dev_info>"
 
 
 def image_to_base64(image_path):
@@ -70,6 +66,17 @@ def daily_summary(user_id: int) -> str:
     return f"Total calories for today: {total_calories} kcal."
 
 
+async def handle_command(user_id: int, text: str) -> str:
+    logger.info(f"Handling command: {text}")
+    if text == "/today":
+        return "Here's your food log history for today:\n" + "\n".join(
+            [
+                f"{entry['description']} - {entry['calories']} kcal"
+                for entry in get_user_entries(user_id, limit="today")
+            ]
+        )
+
+
 async def process_message(
     user_id: int, text: str | None = None, image_path: str | None = None
 ) -> str:
@@ -78,6 +85,9 @@ async def process_message(
     )
 
     get_or_create_user(user_id)
+
+    if text and text.startswith("/"):
+        return await handle_command(user_id, text)
 
     retrieved_history: list[ModelMessage] = get_conversation_history(
         user_id, limit=5
@@ -102,7 +112,7 @@ async def process_message(
         agent_input_content, message_history=retrieved_history, deps=deps
     )
 
-    add_message(user_id, result.new_messages_json())
+    add_interaction(user_id, result.new_messages_json())
 
     logger.info(f"Assistant message for user {user_id}: {result.output}")
     return result.output + "\n" + daily_summary(user_id)

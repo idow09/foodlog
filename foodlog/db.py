@@ -36,12 +36,12 @@ def init_db():
         )
     """)
 
-    # Create messages table for conversation history
+    # Create interactions table for conversation history
     c.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
+        CREATE TABLE IF NOT EXISTS interactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            message_json TEXT,
+            interaction_json TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (telegram_id)
         )
@@ -96,32 +96,6 @@ def add_food_entry(
     conn.close()
     logger.info(f"Food entry added with ID {entry_id}")
     return entry_id
-
-
-ADD_FOOD_ENTRY_TOOL = {
-    "name": "add_food_entry",
-    "type": "function",
-    "description": "Add a new food entry to the database.",
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "required": [
-            "description",
-            "calories",
-        ],
-        "properties": {
-            "description": {
-                "type": "string",
-                "description": "A description of the food item",
-            },
-            "calories": {
-                "type": "number",
-                "description": "The (estimated) number of calories in the food item",
-            },
-        },
-        "additionalProperties": False,
-    },
-}
 
 
 def update_food_entry(
@@ -187,6 +161,7 @@ def get_user_entries(
     if limit == "today":
         # Get entries from today only
         today = datetime.now().strftime("%Y-%m-%d")
+        print(today)
         c.execute(
             """
             SELECT id, description, calories, image_path, created_at
@@ -226,38 +201,37 @@ def get_user_entries(
     return entries
 
 
-def add_message(user_id: int, messages_json_str: str) -> int:
-    """Add a list of Pydantic AI messages (as a JSON string) to the conversation history."""
-    logger.info(f"Adding Pydantic AI messages for user {user_id}")
+def add_interaction(user_id: int, interaction_json_str: str) -> int:
+    """Add a Pydantic AI interaction (as a JSON string) to the conversation history."""
+    logger.info(f"Adding Pydantic AI interaction for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
     c.execute(
         """
-        INSERT INTO messages (user_id, message_json)
+        INSERT INTO interactions (user_id, interaction_json)
         VALUES (?, ?)
     """,
-        (user_id, messages_json_str),
+        (user_id, interaction_json_str),
     )
 
-    message_id = c.lastrowid
+    interaction_id = c.lastrowid
     conn.commit()
     conn.close()
-    logger.info(f"Pydantic AI messages stored with ID {message_id}")
-    return message_id
+    logger.info(f"Pydantic AI interaction stored with ID {interaction_id}")
+    return interaction_id
 
 
 def get_conversation_history(user_id: int, limit: int = 10) -> List[ModelMessage]:
     """Get recent conversation history for a user as a list of Pydantic AI ModelMessage objects."""
-    logger.info(f"Getting Pydantic AI conversation history for user {user_id}")
+    logger.info(f"Getting Pydantic AI interaction history for user {user_id}")
     conn = sqlite3.connect("data/foodlog.db")
     c = conn.cursor()
 
-    # Fetch the most recent 'limit' entries (each entry is a list of messages from an interaction)
     c.execute(
         """
-        SELECT message_json
-        FROM messages
+        SELECT interaction_json
+        FROM interactions
         WHERE user_id = ?
         ORDER BY created_at DESC
         LIMIT ? 
@@ -266,36 +240,29 @@ def get_conversation_history(user_id: int, limit: int = 10) -> List[ModelMessage
     )
 
     all_messages: List[ModelMessage] = []
-    # Rows are fetched in reverse chronological order (newest first)
-    # To maintain chronological order for the agent, we should process them and then reverse if needed,
-    # or build the list in reverse.
-    # Pydantic AI expects history oldest to newest. So we fetch DESC and then reverse the final list of lists before flattening.
 
     rows = c.fetchall()
     conn.close()
 
-    # Rows are (message_json_str,)
-    # We want to construct the history in chronological order (oldest first for Pydantic AI)
-    # So, we iterate through fetched rows (newest first) and prepend to maintain order, or reverse later.
-
-    # Let's build it newest first, then reverse the list of lists of messages, then flatten.
-    # No, easier: fetch rows, then reverse the rows list, then process.
-
     for row in reversed(rows):  # Process oldest first
-        message_json_str = row[0]
+        interaction_json_str = row[0]
         try:
-            # Each message_json_str is a list of ModelMessage objects
-            messages_from_row = ModelMessagesTypeAdapter.validate_json(message_json_str)
+            # Each interaction_json_str is a list of ModelMessage objects
+            messages_from_row = ModelMessagesTypeAdapter.validate_json(
+                interaction_json_str
+            )
             all_messages.extend(messages_from_row)
         except Exception as e:
             logger.error(
-                f"Failed to parse message_json for user {user_id}: {e} - JSON: {message_json_str}"
+                f"Failed to parse interaction_json for user {user_id}: {e} - JSON: {interaction_json_str}"
             )
-            # Decide how to handle: skip this entry, raise, etc.
-            # For now, we'll skip corrupted entries.
             continue
 
     logger.info(
         f"Retrieved {len(all_messages)} Pydantic AI messages for user {user_id}"
     )
     return all_messages
+
+
+if __name__ == "__main__":
+    print(get_user_entries(553954347))
