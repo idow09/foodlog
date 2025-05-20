@@ -49,7 +49,10 @@ async def add_food_entry(ctx: RunContext[Deps], description: str, calories: int)
 
 @agent.instructions
 async def dynamic_instructions(ctx: RunContext[Deps]) -> str:
-    return SYSTEM_PROMPT + f"\n<dev_info>timestamp: {datetime.now()}</dev_info>"
+    return (
+        SYSTEM_PROMPT
+        + f"\n<dev_info>timestamp: {datetime.now().astimezone().isoformat()}</dev_info>"
+    )
 
 
 def image_to_base64(image_path):

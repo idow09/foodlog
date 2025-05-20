@@ -159,14 +159,13 @@ def get_user_entries(
     c = conn.cursor()
 
     if limit == "today":
-        # Get entries from today only
+        # Get entries from today only, using local timezone
         today = datetime.now().strftime("%Y-%m-%d")
-        print(today)
         c.execute(
             """
             SELECT id, description, calories, image_path, created_at
             FROM food_entries
-            WHERE user_id = ? AND date(created_at) = ?
+            WHERE user_id = ? AND date(created_at, 'localtime') = ?
             ORDER BY created_at DESC
             """,
             (user_id, today),
@@ -262,7 +261,3 @@ def get_conversation_history(user_id: int, limit: int = 10) -> List[ModelMessage
         f"Retrieved {len(all_messages)} Pydantic AI messages for user {user_id}"
     )
     return all_messages
-
-
-if __name__ == "__main__":
-    print(get_user_entries(553954347))
